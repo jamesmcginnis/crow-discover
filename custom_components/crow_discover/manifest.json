@@ -1,0 +1,24 @@
+{
+  "domain": "crow_discover",
+  "name": "Crow Discover",
+  "after_dependencies": [
+    "marketplace"
+  ],
+  "codeowners": [
+    "@jamesmcginnis"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "frontend",
+    "http",
+    "panel_custom",
+    "websocket_api"
+  ],
+  "documentation": "https://github.com/jamesmcginnis/crow-discover",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/jamesmcginnis/crow-discover/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.0.1"
+}

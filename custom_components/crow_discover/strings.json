@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Crow Discover",
+        "description": "Adds a Discover page to the sidebar for finding Home Assistant integrations, cards, themes and blueprints on GitHub, including ones that aren't in the Marketplace. It asks GitHub each time you look, so nothing is downloaded or stored. Its settings are in Discover → ⋯ → Settings."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Crow Discover is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Crow Discover settings",
+        "description": "Crow Discover's settings are on its own page: open **Discover** in the sidebar, then tap **⋯** in the top-right corner and choose **Settings**."
+      }
+    }
+  }
+}
