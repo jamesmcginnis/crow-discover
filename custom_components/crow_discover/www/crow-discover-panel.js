@@ -2,7 +2,7 @@
  * Same look as Crow Food: computer (full sidebar, ≥1000px), iPad (icon sidebar, ≥700px) and phone.
  * Edit this file, then run  node build.js  (copies it into custom_components/crow_discover/www). */
 (() => {
-const VERSION = '0.0.1';
+const VERSION = '0.0.2';
 
 const _s = (d, w = 2) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const I = {
@@ -221,7 +221,7 @@ a{color:var(--cm-link)}
 .today{margin:6px 120px 18px 2px}
 .today b{display:block;font-size:30px;font-weight:700;letter-spacing:-0.01em}
 .today small{display:block;font-size:16px;color:var(--cm-text2);margin-top:5px}
-.today.bare{margin-bottom:14px}
+.today.bare{margin-bottom:22px}
 :host(:not([data-wide])) .today{margin:4px 2px 14px}
 :host(:not([data-wide])) .today b{font-size:22px}
 :host(:not([data-wide])) .today small{font-size:14px;margin-top:3px}
@@ -1113,13 +1113,7 @@ class CrowDiscoverPanel extends HTMLElement {
     const years = Math.round((info.old_days || 730) / 365);
     const countKey = STATUS_FILTERS.includes(s.filter) || s.q ? 'all' : s.filter;
     const about = s.counts[countKey];
-    const how = '<button class="link" data-act="how">How?</button>';
-    const sub = phoneHome ? ''  // the home screen is just its sections; How? is in the ⋯ menu
-      : s.filter === 'fav' ? `Yours on this Home Assistant · checked on GitHub when opened · ${how}`
-      : s.filter === 'following' ? `Newest from the authors you follow · only you see who you follow · ${how}`
-      : s.filter === 'hidden' ? 'Left out everywhere else in Discover. Only you see these.'
-      : s.filter === 'author' ? `Their Home Assistant projects on GitHub · ${s.showOld ? 'including older ones' : `not updated in ${years}+ years hidden`}`
-      : `${about != null ? `About ${nf(about)} on GitHub · ` : ''}${s.showOld ? 'including older ones' : `not updated in ${years}+ years hidden`} · <button class="link" data-act="how">How?</button>`;
+    const sub = '';  // no line under the heading: How Discover Finds Projects is in the ⋯ menu
     const banners = [];
     if (!info.signed_in) {
       banners.push(`<button class="stalebar blue" data-act="set-page" data-id="github"><span class="sbi">${I.lock}</span><span class="sbt"><b>Add a GitHub token for checked results</b><small>Without one, GitHub allows about 10 searches a minute and each project is checked when you open it.</small></span><span class="sbr">Add</span></button>`);
