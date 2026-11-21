@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 from html import escape
+import logging
 from html.parser import HTMLParser
 import posixpath
 import re
@@ -15,9 +16,13 @@ from urllib.parse import quote, urlsplit
 import aiohttp
 
 from .const import GITHUB_API, USER_AGENT
+from .github import read_upto
+
+_LOGGER = logging.getLogger(__name__)
 
 MAX_BYTES = 600_000
-VERSION = 2  # bump when cleaning changes, so READMEs kept from before are fetched again
+PARTIAL = "<!--crow-discover:partial-->"  # added to a README that didn't come through in full
+VERSION = 5  # bump when cleaning changes, so READMEs kept from before are fetched again
 
 ALLOWED = {
     "a": {"href", "title"},
@@ -39,18 +44,24 @@ DROP = {"script", "style", "iframe", "object", "embed", "form", "input", "button
         "svg", "math", "template", "noscript", "video", "audio", "canvas", "head", "title", "meta", "link"}
 # dropped tags that never have a closing tag: only the tag itself goes, never what follows it
 DROP_VOID = {"input", "embed", "meta", "link", "base", "area", "col", "param", "track", "wbr", "keygen"}
+# HTML tags that never have a closing tag
+HTML_VOID = DROP_VOID | {"img", "br", "hr", "source"}
 NUMERIC = {"width", "height", "colspan", "rowspan", "start"}
 
 
 class _Clean(HTMLParser):
+    """Keeps the safe parts. A dropped part (an icon, a form, a script…) can never take more with it
+    than the section it's in: the moment its parent closes, the README carries on, even when the
+    dropped part was never closed properly."""
+
     def __init__(self, full_name: str, readme_dir: str) -> None:
         super().__init__(convert_charrefs=True)
         self.full = full_name
         self.dir = readme_dir
         self.out: list[str] = []
-        self.skip = 0  # inside a dropped element
+        self.skipping: list[str] = []  # the tags open inside a dropped part (the first one is the part itself)
         self.open: list[str] = []
-        self.drop_a: list[bool] = []  # GitHub's heading anchors (#links with an icon) are left out
+        self.cut_short: list[str] = []  # dropped parts that weren't closed properly
 
     def _url(self, url: str, kind: str) -> str | None:
         url = (url or "").strip()
@@ -75,16 +86,16 @@ class _Clean(HTMLParser):
         return f"https://github.com/{self.full}/blob/HEAD/{safe}" + (f"#{parts.fragment}" if parts.fragment else "")
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self.skipping:
+            if tag not in HTML_VOID:
+                self.skipping.append(tag)
+            return
         if tag in DROP_VOID:
-            if not self.skip and tag == "input" and (dict(attrs).get("type") or "").lower() == "checkbox":
+            if tag == "input" and (dict(attrs).get("type") or "").lower() == "checkbox":
                 self.out.append("☑" if "checked" in dict(attrs) else "☐")  # a to-do list's tick box
             return
-        if self.skip:
-            if tag in DROP and tag not in VOID:
-                self.skip += 1
-            return
         if tag in DROP:
-            self.skip = 1
+            self.skipping = [tag]
             return
         if tag not in ALLOWED:
             return  # the tag goes, what's inside it stays
@@ -111,10 +122,8 @@ class _Clean(HTMLParser):
             keep.append(f'{name}="{escape(value, quote=True)}"')
         if tag == "a":
             href = (a.get("href") or "")
-            dropped = href.startswith("#") and "anchor" in (a.get("class") or "")
-            self.drop_a.append(dropped)
-            if dropped:
-                self.skip = 1  # its icon goes too (closed in handle_endtag)
+            if href.startswith("#") and "anchor" in (a.get("class") or ""):
+                self.skipping = ["a"]  # GitHub's heading anchor and its icon are left out
                 return
             keep += ['target="_blank"', 'rel="noopener noreferrer"']
         if tag == "img":
@@ -127,24 +136,25 @@ class _Clean(HTMLParser):
             self.open.append(tag)
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self.skipping:
+            return  # <path/> and the like inside a dropped part
+        if tag in DROP and tag not in HTML_VOID:
+            return  # a dropped part that's empty: <svg ... />
         self.handle_starttag(tag, attrs)
-        if tag not in VOID and self.open and self.open[-1] == tag and not self.skip:
+        if tag not in VOID and self.open and self.open[-1] == tag:
             self.handle_endtag(tag)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in DROP_VOID:
-            return
-        if self.skip:
-            if tag == "a" and self.drop_a and self.drop_a[-1] and self.skip == 1:
-                self.drop_a.pop()
-                self.skip = 0
+        if self.skipping:
+            if tag in self.skipping:
+                del self.skipping[len(self.skipping) - 1 - self.skipping[::-1].index(tag):]
                 return
-            if tag in DROP:
-                self.skip -= 1
+            # this closes something outside the dropped part, which never closed: stop dropping here
+            self.cut_short.append(self.skipping[0])
+            self.skipping = []
+        if tag in HTML_VOID:
             return
-        if tag == "a" and self.drop_a:
-            self.drop_a.pop()
-        if tag not in ALLOWED or tag in VOID or tag not in self.open:
+        if tag not in ALLOWED or tag not in self.open:
             return
         while self.open:
             t = self.open.pop()
@@ -153,7 +163,7 @@ class _Clean(HTMLParser):
                 break
 
     def handle_data(self, data: str) -> None:
-        if not self.skip:
+        if not self.skipping:
             self.out.append(escape(data, quote=False))
 
     def result(self) -> str:
@@ -167,7 +177,19 @@ def clean(html: str, full_name: str, readme_path: str = "README.md") -> str:
     parser = _Clean(full_name, posixpath.dirname(readme_path))
     parser.feed(html)
     parser.close()
-    return parser.result().strip()
+    out = parser.result().strip()
+    # say so in the log when a lot of the text went missing, so the cause is quick to find
+    before, after = len(_text(html)), len(_text(out))
+    if parser.skipping or parser.cut_short or (before > 400 and after < before * 0.6):
+        _LOGGER.warning("README of %s: kept %s of %s characters of text (unclosed parts: %s)",
+                        full_name, after, before, ", ".join(parser.cut_short + parser.skipping[:1]) or "none")
+    return out
+
+
+def _text(html: str) -> str:
+    """Rough visible text, for the check above: no tags, no scripts, styles or icons."""
+    html = re.sub(r"(?is)<(script|style|svg|template|noscript)\b.*?</\1\s*>", " ", html)
+    return " ".join(re.sub(r"<[^>]+>", " ", html).split())
 
 
 async def fetch(session: aiohttp.ClientSession, full_name: str, token: str | None) -> str | None:
@@ -175,17 +197,36 @@ async def fetch(session: aiohttp.ClientSession, full_name: str, token: str | Non
     headers = {"Accept": "application/vnd.github.html+json", "User-Agent": USER_AGENT, "X-GitHub-Api-Version": "2022-11-28"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    try:
-        async with session.get(f"{GITHUB_API}/repos/{full_name}/readme", headers=headers,
-                               timeout=aiohttp.ClientTimeout(total=20)) as resp:
-            if resp.status != 200:
-                return None
-            body = await resp.content.read(MAX_BYTES)
-            path = "README.md"
-    except (aiohttp.ClientError, asyncio.TimeoutError):
-        return None
+    body = b""
+    for _ in range(2):  # a README that arrives cut off is asked for once more
+        try:
+            async with session.get(f"{GITHUB_API}/repos/{full_name}/readme", headers=headers,
+                                   timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                if resp.status != 200:
+                    return None
+                body = await read_upto(resp, MAX_BYTES)
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            if body:
+                break  # keep what came the first time
+            return None
+        if _complete(body):
+            break
+    path = "README.md"
     html = body.decode("utf-8", "replace")
     if p := re.search(r'data-path="([^"]+)"', html[:2000]):
         path = p.group(1)  # a README in a folder: its pictures are relative to that folder
     m = re.search(r'<article[^>]*>(.*)</article>', html, flags=re.S)
-    return clean(m.group(1) if m else html, full_name, path)
+    if not m:
+        m = re.search(r'<article[^>]*>(.*)', html, flags=re.S)  # cut off before its end
+    out = clean(m.group(1) if m else html, full_name, path)
+    if not _complete(body):
+        _LOGGER.warning("README of %s didn't come through in full (%s bytes)", full_name, len(body))
+        out += PARTIAL
+    return out
+
+
+def _complete(body: bytes) -> bool:
+    """GitHub wraps a README in <article>…</article>: no closing tag means it was cut off."""
+    if len(body) >= MAX_BYTES:
+        return False
+    return b"<article" not in body[:5000] or b"</article>" in body

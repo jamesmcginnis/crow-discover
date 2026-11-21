@@ -123,7 +123,7 @@ async def readme_excerpt(session: aiohttp.ClientSession, full: str, limit: int =
             async with session.get(f"{RAW}/{full}/HEAD/{name}", timeout=aiohttp.ClientTimeout(total=15)) as resp:
                 if resp.status != 200:
                     continue
-                text = (await resp.content.read(200_000)).decode("utf-8", "replace")
+                text = (await read_upto(resp, 200_000)).decode("utf-8", "replace")
         except (aiohttp.ClientError, asyncio.TimeoutError):
             return ""
         return plain(text, limit)
@@ -149,3 +149,16 @@ def plain(md: str, limit: int) -> str:
         cut = t[:limit].rsplit(" ", 1)[0]
         t = cut.rstrip(" ,.;:") + "…"
     return t
+
+
+async def read_upto(resp: aiohttp.ClientResponse, limit: int) -> bytes:
+    """The whole answer, up to limit bytes. (content.read(limit) stops after the first piece GitHub
+    sends, which cut longer READMEs short.)"""
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in resp.content.iter_chunked(65536):
+        chunks.append(chunk)
+        total += len(chunk)
+        if total >= limit:
+            break
+    return b"".join(chunks)[:limit]

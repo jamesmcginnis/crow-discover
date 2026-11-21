@@ -2,7 +2,7 @@
  * Same look as Crow Food: computer (full sidebar, ≥1000px), iPad (icon sidebar, ≥700px) and phone.
  * Edit this file, then run  node build.js  (copies it into custom_components/crow_discover/www). */
 (() => {
-const VERSION = '0.0.2';
+const VERSION = '0.0.3';
 
 const _s = (d, w = 2) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const I = {
@@ -400,7 +400,7 @@ a{color:var(--cm-link)}
 .md{padding:18px 20px 20px;font-size:16px;line-height:1.55;color:var(--cm-text);word-wrap:break-word;overflow-wrap:anywhere}
 .md-box.short .md{max-height:620px;overflow:hidden}
 .md-box.short::after{content:'';position:absolute;left:0;right:0;bottom:52px;height:110px;pointer-events:none;background:linear-gradient(transparent,var(--cm-field))}
-.md-more{display:block;width:100%;padding:14px;font-size:16px;font-weight:600;color:var(--cm-link);text-align:center;border-top:.5px solid var(--cm-sep)}
+.md-more{display:block;width:100%;text-decoration:none;box-sizing:border-box;padding:14px;font-size:16px;font-weight:600;color:var(--cm-link);text-align:center;border-top:.5px solid var(--cm-sep)}
 .md>:first-child{margin-top:0}.md>:last-child{margin-bottom:0}
 .md h1,.md h2,.md h3,.md h4,.md h5,.md h6{margin:22px 0 10px;font-weight:700;line-height:1.25}
 .md h1{font-size:26px;padding-bottom:8px;border-bottom:.5px solid var(--cm-sep)}
@@ -475,6 +475,9 @@ a{color:var(--cm-link)}
 .fr.act .oi{width:30px;height:30px}
 .fr.act .chev{width:14px;height:14px;color:var(--cm-text3);margin-left:auto}
 .fr.act.red{color:var(--cm-red)}
+.md-link{display:flex;align-items:center;justify-content:center;gap:6px;margin:10px 0 14px;padding:6px;font-size:15px;font-weight:600;color:var(--cm-accent);text-decoration:none}
+.md-link svg{width:15px;height:15px}
+.md-link:active{opacity:.6}
 .rel-meta{display:flex;justify-content:space-between;gap:10px;padding:12px 20px;font-size:14px;color:var(--cm-text2);border-bottom:.5px solid var(--cm-sep)}
 .md-box.rel.short .md{max-height:320px}
 .btns .pill{white-space:normal;line-height:1.15;text-align:center}
@@ -1284,7 +1287,7 @@ class CrowDiscoverPanel extends HTMLElement {
   _detailSheet() {
     const s = this.s, d = s.detail, name = s.sel;
     const fav = this._isFav(name), favInfo = s.favs[name.toLowerCase()] || {};
-    const head = `<div class="xhd"><button class="cb g" data-act="close" aria-label="Close">${I.x}</button><h3></h3><div class="xr"><button class="cb g${fav ? ' on' : ''}" data-act="fav-sheet" aria-label="${fav ? 'Remove from Favourites' : 'Add to Favourites'}" aria-pressed="${fav}">${fav ? I.starFill : I.star}</button><button class="cb g" data-act="github" aria-label="Open on GitHub">${I.ext}</button></div></div>`;
+    const head = `<div class="xhd"><button class="cb g" data-act="close" aria-label="Close">${I.x}</button><h3></h3><div class="xr"><button class="cb g${fav ? ' on' : ''}" data-act="fav-sheet" aria-label="${fav ? 'Remove from Favourites' : 'Add to Favourites'}" aria-pressed="${fav}">${fav ? I.starFill : I.star}</button></div></div>`;
     if (!d) return `<div class="xs-wrap" data-act="close"><div class="xsheet" role="dialog" aria-label="${esc(name)}" data-stop>${head}<div class="xbody"><div class="loading"><div class="spinner"></div></div></div></div></div>`;
     if (d.error) return `<div class="xs-wrap" data-act="close"><div class="xsheet" role="dialog" data-stop>${head}<div class="xbody"><div class="empty">${esc(d.error)}</div></div></div></div>`;
     const t = TYPES[d.type] || TYPES.integration, st = STATUS[d.status] || STATUS.none;
@@ -1352,8 +1355,8 @@ class CrowDiscoverPanel extends HTMLElement {
         <p class="note">${esc(note)}</p>
         ${fav ? `<div class="fh">Your note</div><div class="fg" style="padding:12px"><textarea class="note-in" data-note="${esc(name)}" placeholder="Add a note (only you see it)" aria-label="Your note">${esc(favInfo.note || '')}</textarea></div>` : ''}
         ${this._releaseSection(d)}
-        ${d.readme_html ? `<div class="fh">README</div><div class="md-box${s.mdFull ? '' : ' short'}"><div class="md">${d.readme_html}</div>${s.mdFull ? '' : '<button class="md-more" data-act="md-full">Show Full README</button>'}</div>`
-          : d.description || d.readme ? `<div class="fg"><div class="readme">${esc(d.readme || d.description)}</div></div>` : ''}
+        ${d.readme_html ? `<div class="fh">README</div><div class="md-box${s.mdFull ? '' : ' short'}"><div class="md">${d.readme_html}</div>${s.mdFull ? '' : '<button class="md-more" data-act="md-full">Read More</button>'}${s.mdFull && d.readme_html.includes('<!--crow-discover:partial-->') ? `<a class="md-more" href="https://github.com/${esc(d.full_name)}#readme" target="_blank" rel="noopener">GitHub only sent part of this README · Read the Rest on GitHub</a>` : ''}</div>${this._readmeLink(d)}`
+          : d.description || d.readme ? `<div class="fg"><div class="readme">${esc(d.readme || d.description)}</div></div>${d.readme ? this._readmeLink(d) : ''}` : ''}
         <div class="fh">Details</div>
         <div class="fg">${facts.map(([k, v]) => `<div class="fr"><span>${k}</span><span class="fv">${esc(v)}</span></div>`).join('')}
           <div class="fr"><span>Detected as</span><span class="fv mono">${esc(d.path)}</span></div></div>
@@ -1365,6 +1368,11 @@ class CrowDiscoverPanel extends HTMLElement {
       </div></div></div>`;
   }
 
+  // always one tap from the README as GitHub shows it, in case anything here is missing
+  _readmeLink(d) {
+    return `<a class="md-link" href="https://github.com/${esc(d.full_name)}#readme" target="_blank" rel="noopener">Read the Full README on GitHub${I.ext}</a>`;
+  }
+
   _releaseSection(d) {
     const rn = d.release_notes, s = this.s;
     if (!rn || (!rn.html && !rn.tag)) return '';
@@ -1372,7 +1380,7 @@ class CrowDiscoverPanel extends HTMLElement {
     const url = /^https:\/\/github\.com\//.test(rn.url || '') ? rn.url : `https://github.com/${d.full_name}/releases`;
     const meta = `<div class="rel-meta"><span>${rn.published ? `Released ${esc(ago(rn.published).toLowerCase())}` : ''}</span><a class="link" href="${esc(url)}" target="_blank" rel="noopener">All releases</a></div>`;
     return `<div class="fh">What’s new in ${esc(title)}</div>
-      <div class="md-box rel${s.relFull || !rn.html ? '' : ' short'}">${meta}${rn.html ? `<div class="md">${rn.html}</div>` : '<div class="md"><p>No notes with this release.</p></div>'}${s.relFull || !rn.html ? '' : '<button class="md-more" data-act="rel-full">Show All Notes</button>'}</div>`;
+      <div class="md-box rel">${meta}${rn.html ? `<div class="md">${rn.html}</div>` : '<div class="md"><p>No notes with this release.</p></div>'}</div>`;
   }
 
   // ── settings ─────────────────────────────────────

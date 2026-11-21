@@ -1,7 +1,7 @@
 """Constants for Crow Discover."""
 
 DOMAIN = "crow_discover"
-VERSION = "0.0.1"
+VERSION = "0.0.3"
 
 PANEL_URL = "crow-discover"
 PANEL_ELEMENT = "crow-discover-panel"
